@@ -3,7 +3,12 @@ library(Seurat)
 library(tidyverse)
 library (ggplot2)
 library(dplyr)
-####Current version####
+
+
+
+#T_Cells Batch_Argument
+#Run in terminal with $RScript T_Cells_Batch.R CD4
+
 #Define argument values
 options(echo=TRUE)
 args <- commandArgs(trailingOnly = TRUE)
