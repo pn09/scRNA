@@ -1,0 +1,96 @@
+#load packages
+library(Seurat)
+library(tidyverse)
+library (ggplot2)
+library(dplyr)
+####Current version####
+#Define argument values
+options(echo=TRUE)
+args <- commandArgs(trailingOnly = TRUE)
+cell_type = args[1]
+# cluster = args[2]
+
+out_dir = file.path("/home/rstudio/", "results", cell_type)
+dir.create(out_dir, showWarnings = FALSE, recursive = TRUE)
+message(sprintf("Read argument: %s", cell_type))
+
+local <- readRDS("~/local.rds") #scRNA dataset
+local <- subset(local,subset = nFeature_RNA > 200 & nFeature_RNA < 2500 & percent.mt < 5)
+print(local)
+
+#local_1 <- subset(local,subset = nFeature_RNA > 200 & nFeature_RNA < 1500 &percent.mt < 5 )
+#Change ENSEMBLE ID to gene name
+Feature <- read.delim("~/feature.tsv", header = T)
+colnames(Feature)[colnames(Feature) == "rowname"] <- "ENSEMBLE"
+colnames(Feature)[colnames(Feature) == "feature_name"] <- "ID"
+
+GeneID <- local@assays[["RNA"]]@data@Dimnames[[1]]
+rownames(Feature) <- Feature[["ENSEMBLE"]] 
+Feature <- Feature [GeneID,]
+local@assays[["RNA"]]@data@Dimnames[[1]] <- Feature[["ID"]]
+row.names(local@assays[["RNA"]]@meta.features) <- rownames(local)
+
+#HLA types
+x <- readRDS("~/Powell_HLAI_CK.rds") #HLA genotype
+x_split <- x %>%
+  separate(HLA, into = paste("Column", 1:6), sep = ",") #gives 6 columns, 2 for each HLA types 
+#If the condition in HLA-B (column 3/ column 4) is B27, assign 1, otherwise 0
+x_split$B27 <- ifelse(substr(x_split$`Column 3`, 1, 3) == "B27" | 
+                        substr(x_split$`Column 4`, 1, 3) == "B27",
+                      "B27+","B27-")
+
+#Only keep "donor_id", Column 3/Column 4 and B27 column 
+x_split <- x_split[,c('donor_id','B27')]
+row.names(x_split) = x_split$donor_id
+local@meta.data$B27 = x_split[as.character(local@meta.data$donor_id), "B27"]
+#DimPlot(local, reduction = "umap",group.by= "predicted.celltype.l2",split.by="B27", raster=FALSE)
+
+#Add a subset for T cells
+local@meta.data$T_subset <- ifelse(grepl ("CD4",local@meta.data$predicted.celltype.l2),"CD4",
+                                   ifelse(grepl ("CD8",local@meta.data$predicted.celltype.l2),"CD8",
+                                          ifelse(grepl ("MAIT",local@meta.data$predicted.celltype.l2),"MAIT",
+                                                 ifelse(grepl ("gdT",local@meta.data$predicted.celltype.l2),"gdT",
+                                                        ifelse(grepl ("Treg",local@meta.data$predicted.celltype.l2),"Treg", "Others")))))
+
+
+#DimPlot(local, reduction = "umap",group.by= "lineage", raster=FALSE)
+
+#Standard workflow analysis
+#MAIT subset
+#MAIT <- subset(local, T_subset =="MAIT")
+#print(nrow(MAIT))
+
+local@meta.data$Selection = local@meta.data$T_subset == cell_type
+Idents(local) <- "Selection"
+CT <- subset(local, Selection == TRUE)
+#A binary function to work around the T_subset ==cell_type where 
+#cell_type has to be a fixed variable 
+print(nrow(CT@meta.data)) 
+print(ncol(CT@meta.data))
+
+CT <- FindVariableFeatures(CT, selection.method = "vst", nfeatures = 5000)
+CT.all.genes <- rownames(CT)
+CT <- ScaleData(CT, features = CT.all.genes)
+CT <- RunPCA(CT)
+CT <- FindNeighbors(CT, redution = "pca", dims = 1:15)
+CT <- FindClusters(CT, resolution = 0.5)
+CT <- RunUMAP(CT, reduction = "pca", dims = 1:15)
+
+file_name = file.path(out_dir, "subset.rds")
+print(file_name)
+saveRDS(CT, file = file_name)
+
+#DEG analysis 
+Idents(CT) <- "B27"
+Markers <- FindMarkers(CT, ident.1 = "B27+", ident.2 = "B27-", verbose = TRUE,
+                       min.cells.group = 1, #Usually 3
+                       min.cells.feature = 1, #Usually 3 but 1 is okay for rare cell types 
+                       min.pct = 0,
+                       logfc.threshold = 0,
+                       only.pos = FALSE)
+print(head(Markers,5))
+
+#export DEG lists into Excel files
+library(openxlsx)
+Markers$Gene_ID <- row.names(Markers)
+write.xlsx(Markers, file = file.path(out_dir, "Markers_Comp.xlsx"))
