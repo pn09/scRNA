@@ -94,3 +94,76 @@ print(head(Markers,5))
 library(openxlsx)
 Markers$Gene_ID <- row.names(Markers)
 write.xlsx(Markers, file = file.path(out_dir, "Markers_Comp.xlsx"))
+
+####volcano plots####
+CD4_Markers$diffexpressed <- "No"
+# if log2Foldchange > 0.2 and pvalue < 0.05, set as "Up" 
+CD4_Markers$diffexpressed[CD4_Markers$avg_log2FC > 0.1 & CD4_Markers$p_val < 0.05] <- "Upregulated in B27+"
+up <- subset(CD4_Markers,avg_log2FC > 0.1 & p_val < 0.05)
+
+# if log2Foldchange < -0.2 and pvalue < 0.05, set as "DOWN"
+CD4_Markers$diffexpressed[CD4_Markers$avg_log2FC < -0.1 & CD4_Markers$p_val < 0.05] <- "Downregulated in HLA-B27"
+down <- subset(CD4_Markers,avg_log2FC < -0.1 &p_val < 0.05)
+
+CD4_Markers$delabel <- NA
+CD4_Markers$gene_symbol <- CD4_Markers$Gene_ID
+CD4_Markers$delabel[CD4_Markers$diffexpressed != "No"] <- CD4_Markers$gene_symbol[CD4_Markers$diffexpressed != "No"]
+
+p8 <- ggplot(data=CD4_Markers, aes(x=avg_log2FC, y=-log10(p_val), 
+                                   col=diffexpressed,label = delabel)) +
+  geom_point() + 
+  theme_minimal() +
+  geom_text_repel(size = 4, max.overlaps = 10) +
+  scale_color_manual(values = c( "#00496f", "#B3B6B7", "#dd4124"), name = "Expression")+
+  theme(panel.border = element_blank(), panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"),#Makes background = white,line on graphs = black 
+        legend.position = "bottom",
+        axis.text = element_text(size = 12),
+        axis.title= element_text(size=14)) + #change position of the legend
+  geom_vline(xintercept=c(-0.1, 0.1), col="black", linetype="dashed",linewidth = 0.7) +
+  geom_hline(yintercept=-log10(0.05), col="black",linetype="dashed",linewidth = 0.7)+
+  xlab(bquote(~Log[2]~"fold change") )+ 
+  ylab(bquote(~-Log[10]~"P-value")) +
+  ggtitle("CD4")
+print(p8)
+ggsave("CD4.pdf",p8)
+
+####Bar plots ####
+my_theme = theme_minimal() +
+  theme(legend.position = "top",
+        panel.border = element_blank(), 
+        #panel.grid.major = element_blank(),
+        #panel.grid.minor = element_blank(), 
+        axis.line = element_line(colour = "black"),
+        #axis.title.x = element_text(color = "black", size = 12),
+        axis.title.y = element_text(size = 12),
+        axis.text.x = element_text(size = 12))
+
+local@meta.data$lineage <- ifelse(grepl ("T cell",local@meta.data$cell_type),"T cells",
+                                  ifelse(grepl ("B cell",local@meta.data$cell_type),"B cells",
+                                         ifelse(grepl( "killer",local@meta.data$cell_type),"NK",
+                                                ifelse(grepl("monocyte",local@meta.data$cell_type),"Monocytes",
+                                                       ifelse(grepl("dendritic",local@meta.data$cell_type),"DCs","Others")))))
+meta.data <- as.data.frame(local@meta.data)
+
+data_4 <- meta.data %>%
+  group_by(lineage, B27) %>%
+  summarise(cell_count = n()) 
+
+data_4$Proportion <- ifelse(data_4$B27 == "B27+", 
+                            (data_4$cell_count / b27_positive_total) * 100,
+                            ifelse(data_4$B27 == "B27-",
+                                   (data_4$cell_count / b27_negative_total) * 100,
+                                   NA))
+
+bar_plot_4 <- ggplot(data_4,
+                     aes(x = B27,
+                         y = Proportion,
+                         fill = lineage)) +
+              geom_col(colour='black', position = "stack", width = 0.3) +
+              labs(x = "", y = "Proportion of Cells in %", 
+                   title = "Proportions of Cells in Meta-cluster")+
+              scale_fill_manual(values = pnw_palette("Bay",6), name = "")
+  
+bar_plot_4 + my_theme
+  
