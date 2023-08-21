@@ -3,7 +3,16 @@ library(Seurat)
 library(tidyverse)
 library (ggplot2)
 library(dplyr)
-####Current version####
+
+#Visualization
+CD8 <- readRDS("~/results/CD8/subset.rds")
+DimPlot(CD8, reduction = "umap",split.by="B27", raster=FALSE) #Group by cluster
+DimPlot(CD8, reduction = "umap", group.by = "predicted.celltype.l2",
+        split.by = "B27", raster = FALSE) 
+
+
+
+#Batch Argument
 #Define argument values
 options(echo=TRUE)
 args <- commandArgs(trailingOnly = TRUE)
@@ -94,3 +103,110 @@ print(head(Markers,5))
 library(openxlsx)
 Markers$Gene_ID <- row.names(Markers)
 write.xlsx(Markers, file = file.path(out_dir, "Markers_Comp.xlsx"))
+
+#Gender/Age distribution 
+# Create a function to categorize ages into groups
+categorize_age <- function(age) {
+  if (age < 20) {
+    return("<20")
+  } else if (age <= 24) {
+    return("20-24")
+  } else if (age <= 29) {
+    return("25-29")
+  } else if (age <= 34) {
+    return("30-34")
+  } else if (age <= 39) {
+    return("35-39")
+  } else if (age <= 44) {
+    return("40-44")
+  } else if (age <= 49) {
+    return("45-49")
+  } else if (age <= 54) {
+    return("50-54")
+  } else if (age <= 59) {
+    return("55-59")
+  } else if (age <= 64) {
+    return("60-64")
+  } else if (age <= 69) {
+    return("65-69")
+  } else if (age <= 74) {
+    return("70-74")
+  } else if (age <= 79) {
+    return("75-79")
+  } else if (age <= 84) {
+    return("80-84")
+  } else if (age <= 89) {
+    return("85-89")
+  } else {
+    return("90+")
+  }
+}
+
+# Create a new data frame with age and age_group columns
+meta$Age_Group <- sapply(meta$age, categorize_age)
+
+# Print the new data frame
+print(meta)
+
+#B27 data frame 
+B27_positive_df <- meta %>%
+  filter(B27 == "B27+") %>%
+  group_by(sex,Age_Group) %>%
+  summarise(Count = n_distinct(donor_id)) %>%
+  mutate(Participants = ifelse(sex == "female",
+                               Count,
+                               -1*Count))
+  
+
+B27_negative_df <- meta %>%
+  filter(B27 == "B27-") %>%
+  group_by(sex,Age_Group) %>%
+  summarise(Count = n_distinct(donor_id)) %>%
+  mutate(Participants = ifelse(sex == "female",
+                               Count,
+                               -1*Count))
+
+#Graph distribution
+break_values <- pretty(B27_positive_df$Participants)
+
+Distribution_B27_pos <- ggplot(B27_positive_df, aes(x = Age_Group, y = Participants, fill = sex)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  labs(x = "Age Group", y = "Participants", title = "Age Group Distribution by Sex in HLA-B27+") +
+  scale_fill_manual(values = c("pink","steelblue" )) +
+  theme_minimal() +
+  #theme(axis.text.x = element_text(angle = 45, hjust = 1))+
+  scale_y_continuous(breaks=break_values,
+                     labels = abs(break_values)) +
+  coord_flip()
+
+Distribution_B27_pos + theme(legend.position = "bottom",
+                             panel.border = element_blank(), 
+                             #panel.grid.major = element_blank(),
+                             panel.grid.minor = element_blank(), 
+                             axis.line = element_line(colour = "black"),
+                             #axis.title.x = element_text(color = "black", size = 12),
+                             axis.title.y = element_text(size = 12),
+                             axis.text.x = element_text(size = 12))
+print(Distribution_B27_pos)
+
+break_values_2 <- pretty(B27_negative_df$Participants)
+
+Distribution_B27_neg <- ggplot(B27_negative_df, aes(x = Age_Group, y = Participants, fill = sex)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  labs(x = "Age Group", y = "Participants", title = "Age Group Distribution by Sex in HLA-B27-") +
+  scale_fill_manual(values = c("pink","steelblue" )) +
+  theme_minimal() +
+  #theme(axis.text.x = element_text(angle = 45, hjust = 1))+
+  scale_y_continuous(breaks=break_values_2,
+                     labels = abs(break_values_2)) +
+  coord_flip()
+
+Distribution_B27_neg + theme(legend.position = "bottom",
+                             panel.border = element_blank(), 
+                             #panel.grid.major = element_blank(),
+                             panel.grid.minor = element_blank(), 
+                             axis.line = element_line(colour = "black"),
+                             #axis.title.x = element_text(color = "black", size = 12),
+                             axis.title.y = element_text(size = 12),
+                             axis.text.x = element_text(size = 12))
+print(Distribution_B27_neg)
