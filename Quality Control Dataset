@@ -1,0 +1,47 @@
+#Seurat object
+local <- readRDS("~/local.rds") #scRNA dataset
+
+#QC of number of RNA counts reads
+meta.data <- local@meta.data
+
+count_table <- meta.data %>%
+  group_by(donor_id) %>%
+  summarise(Count = nFeature_RNA)
+count_table$donor_id <- as.character(count_table$donor_id)
+
+count_plot <- ggplot(count_table, aes (x = donor_id, y = Count, fill = donor_id))+
+  geom_boxplot(fill = "white", colour = "black")
+print(count_plot)
+
+# Split the data frame into 10 parts
+num_parts <- 10
+part_size <- nrow(count_table) %/% num_parts
+data_frames <- list()
+
+for (i in 1:num_parts) {
+  start_row <- (i - 1) * part_size + 1
+  end_row <- i * part_size
+  
+  if (i == num_parts) {
+    end_row <- nrow(count_table)
+  }
+  
+  data_frames[[i]] <- count_table[start_row:end_row, ]
+}
+
+count_plot_1 <- ggplot(data_frames[[1]], aes (x = donor_id, y = Count, fill = donor_id))+
+  geom_boxplot(fill = "white", colour = "black")+
+  scale_x_discrete(guide = guide_axis(angle = 90))+
+  theme_minimal()
+print(count_plot_1)
+
+
+generate_plot <- function() {
+  ggplot(data_frames, aes (x = donor_id, y = Count, fill = donor_id))+
+    geom_boxplot(fill = "white", colour = "black")+
+    scale_x_discrete(guide = guide_axis(angle = 90))+
+    theme_minimal()
+}
+
+# Generate plots for all data frames
+plots_list <- lapply(data_frames, generate_plot)
