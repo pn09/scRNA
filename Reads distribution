@@ -1,0 +1,63 @@
+ #load packages
+library(Seurat)
+library(tidyverse)
+library (ggplot2)
+library(dplyr)
+
+####Current version####
+#Seurat object
+local <- readRDS("~/local.rds") #scRNA dataset
+
+#QC of number of RNA counts reads
+meta.data <- local@meta.data
+
+count_table <- meta.data %>%
+  group_by(donor_id) %>%
+  summarise(Count = nFeature_RNA) 
+count_table$donor_id <- as.character(count_table$donor_id)
+
+#Split count table so that each table have counts for 50 donors, out of 981 donors
+split_master_data <- function(count_table, donors_per_table = 50) {
+  unique_donors <- unique(count_table$donor_id)
+  num_tables <- length(unique_donors) %/% donors_per_table
+  
+# Initialize a list to store the split tables
+  split_tables <- list()
+  
+  for (i in 1:num_tables) {
+    donors_to_extract <- unique_donors[((i - 1) * donors_per_table + 1):(i * donors_per_table)]
+    subset_table <- subset(count_table, donor_id %in% donors_to_extract)
+    split_tables[[i]] <- subset_table
+  }
+  
+  return(split_tables)
+}
+
+# Split the master data into smaller tables, each containing 50 donors
+smaller_tables <- split_master_data(count_table, donors_per_table = 75)
+
+# Access individual smaller tables
+# For example, to access the first smaller table:
+table1 <- smaller_tables[[1]]
+
+#Generate plots
+bar_plot_theme <- theme(legend.position = "none",
+                        panel.border = element_blank(), 
+                        panel.grid.major = element_blank(),
+                        panel.grid.minor = element_blank(), 
+                        axis.line = element_line(colour = "black"),
+                        axis.title.x = element_text(color = "black", size = 12),
+                        axis.title.y = element_text(size = 12),
+                        axis.text.x = element_text(size = 12))
+
+generate_plot <- function(table) {
+  ggplot(table, aes (x = donor_id, y = Count, fill = donor_id))+
+    geom_boxplot(fill = "white", colour = "black")+
+    scale_x_discrete(guide = guide_axis(angle = 90))+
+    theme_minimal()+
+    bar_plot_theme
+}
+
+# Generate plots for all data frames
+plots_list <- lapply(smaller_tables, generate_plot)
+print(plots_list[[3]])
