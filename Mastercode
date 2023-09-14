@@ -3,167 +3,70 @@ library(Seurat)
 library(tidyverse)
 library (ggplot2)
 library(dplyr)
+
 ####Current version####
-#Define argument values
-options(echo=TRUE)
-args <- commandArgs(trailingOnly = TRUE)
-cell_type = args[1]
-# cluster = args[2]
-
-out_dir = file.path("/home/rstudio/", "results", cell_type)
-dir.create(out_dir, showWarnings = FALSE, recursive = TRUE)
-message(sprintf("Read argument: %s", cell_type))
-
+#Seurat object
 local <- readRDS("~/local.rds") #scRNA dataset
-local <- subset(local,subset = nFeature_RNA > 200 & nFeature_RNA < 2500 & percent.mt < 5)
-print(local)
 
-#local_1 <- subset(local,subset = nFeature_RNA > 200 & nFeature_RNA < 1500 &percent.mt < 5 )
-#Change ENSEMBLE ID to gene name
-Feature <- read.delim("~/feature.tsv", header = T)
-colnames(Feature)[colnames(Feature) == "rowname"] <- "ENSEMBLE"
-colnames(Feature)[colnames(Feature) == "feature_name"] <- "ID"
+#QC of number of RNA counts reads
+meta.data <- local@meta.data
 
-GeneID <- local@assays[["RNA"]]@data@Dimnames[[1]]
-rownames(Feature) <- Feature[["ENSEMBLE"]] 
-Feature <- Feature [GeneID,]
-local@assays[["RNA"]]@data@Dimnames[[1]] <- Feature[["ID"]]
-row.names(local@assays[["RNA"]]@meta.features) <- rownames(local)
+count_table <- meta.data %>%
+  group_by(donor_id) %>%
+  summarise(Counts = nFeature_RNA) 
+count_table$donor_id <- as.character(count_table$donor_id)
 
-#HLA types
-x <- readRDS("~/Powell_HLAI_CK.rds") #HLA genotype
-x_split <- x %>%
-  separate(HLA, into = paste("Column", 1:6), sep = ",") #gives 6 columns, 2 for each HLA types 
-#If the condition in HLA-B (column 3/ column 4) is B27, assign 1, otherwise 0
-x_split$B27 <- ifelse(substr(x_split$`Column 3`, 1, 3) == "B27" | 
-                        substr(x_split$`Column 4`, 1, 3) == "B27",
-                      "B27+","B27-")
-
-#Only keep "donor_id", Column 3/Column 4 and B27 column 
-x_split <- x_split[,c('donor_id','B27')]
-row.names(x_split) = x_split$donor_id
-local@meta.data$B27 = x_split[as.character(local@meta.data$donor_id), "B27"]
-#DimPlot(local, reduction = "umap",group.by= "predicted.celltype.l2",split.by="B27", raster=FALSE)
-
-#Add a subset for T cells
-local@meta.data$T_subset <- ifelse(grepl ("CD4",local@meta.data$predicted.celltype.l2),"CD4",
-                                   ifelse(grepl ("CD8",local@meta.data$predicted.celltype.l2),"CD8",
-                                          ifelse(grepl ("MAIT",local@meta.data$predicted.celltype.l2),"MAIT",
-                                                 ifelse(grepl ("gdT",local@meta.data$predicted.celltype.l2),"gdT",
-                                                        ifelse(grepl ("Treg",local@meta.data$predicted.celltype.l2),"Treg", "Others")))))
-
-
-#DimPlot(local, reduction = "umap",group.by= "lineage", raster=FALSE)
-
-#Standard workflow analysis
-#MAIT subset
-#MAIT <- subset(local, T_subset =="MAIT")
-#print(nrow(MAIT))
-
-local@meta.data$Selection = local@meta.data$T_subset == cell_type
-Idents(local) <- "Selection"
-CT <- subset(local, Selection == TRUE)
-#A binary function to work around the T_subset ==cell_type where 
-#cell_type has to be a fixed variable 
-print(nrow(CT@meta.data)) 
-print(ncol(CT@meta.data))
-
-CT <- FindVariableFeatures(CT, selection.method = "vst", nfeatures = 5000)
-CT.all.genes <- rownames(CT)
-CT <- ScaleData(CT, features = CT.all.genes)
-CT <- RunPCA(CT)
-CT <- FindNeighbors(CT, redution = "pca", dims = 1:15)
-CT <- FindClusters(CT, resolution = 0.5)
-CT <- RunUMAP(CT, reduction = "pca", dims = 1:15)
-
-file_name = file.path(out_dir, "subset.rds")
-print(file_name)
-saveRDS(CT, file = file_name)
-
-#DEG analysis 
-Idents(CT) <- "B27"
-Markers <- FindMarkers(CT, ident.1 = "B27+", ident.2 = "B27-", verbose = TRUE,
-                       min.cells.group = 1, #Usually 3
-                       min.cells.feature = 1, #Usually 3 but 1 is okay for rare cell types 
-                       min.pct = 0,
-                       logfc.threshold = 0,
-                       only.pos = FALSE)
-print(head(Markers,5))
-
-#export DEG lists into Excel files
-library(openxlsx)
-Markers$Gene_ID <- row.names(Markers)
-write.xlsx(Markers, file = file.path(out_dir, "Markers_Comp.xlsx"))
-
-####volcano plots####
-CD4_Markers$diffexpressed <- "No"
-# if log2Foldchange > 0.2 and pvalue < 0.05, set as "Up" 
-CD4_Markers$diffexpressed[CD4_Markers$avg_log2FC > 0.1 & CD4_Markers$p_val < 0.05] <- "Upregulated in B27+"
-up <- subset(CD4_Markers,avg_log2FC > 0.1 & p_val < 0.05)
-
-# if log2Foldchange < -0.2 and pvalue < 0.05, set as "DOWN"
-CD4_Markers$diffexpressed[CD4_Markers$avg_log2FC < -0.1 & CD4_Markers$p_val < 0.05] <- "Downregulated in HLA-B27"
-down <- subset(CD4_Markers,avg_log2FC < -0.1 &p_val < 0.05)
-
-CD4_Markers$delabel <- NA
-CD4_Markers$gene_symbol <- CD4_Markers$Gene_ID
-CD4_Markers$delabel[CD4_Markers$diffexpressed != "No"] <- CD4_Markers$gene_symbol[CD4_Markers$diffexpressed != "No"]
-
-p8 <- ggplot(data=CD4_Markers, aes(x=avg_log2FC, y=-log10(p_val), 
-                                   col=diffexpressed,label = delabel)) +
-  geom_point() + 
-  theme_minimal() +
-  geom_text_repel(size = 4, max.overlaps = 10) +
-  scale_color_manual(values = c( "#00496f", "#B3B6B7", "#dd4124"), name = "Expression")+
-  theme(panel.border = element_blank(), panel.grid.major = element_blank(),
-        panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"),#Makes background = white,line on graphs = black 
-        legend.position = "bottom",
-        axis.text = element_text(size = 12),
-        axis.title= element_text(size=14)) + #change position of the legend
-  geom_vline(xintercept=c(-0.1, 0.1), col="black", linetype="dashed",linewidth = 0.7) +
-  geom_hline(yintercept=-log10(0.05), col="black",linetype="dashed",linewidth = 0.7)+
-  xlab(bquote(~Log[2]~"fold change") )+ 
-  ylab(bquote(~-Log[10]~"P-value")) +
-  ggtitle("CD4")
-print(p8)
-ggsave("CD4.pdf",p8)
-
-####Bar plots ####
-my_theme = theme_minimal() +
-  theme(legend.position = "top",
-        panel.border = element_blank(), 
-        #panel.grid.major = element_blank(),
-        #panel.grid.minor = element_blank(), 
-        axis.line = element_line(colour = "black"),
-        #axis.title.x = element_text(color = "black", size = 12),
-        axis.title.y = element_text(size = 12),
-        axis.text.x = element_text(size = 12))
-
-local@meta.data$lineage <- ifelse(grepl ("T cell",local@meta.data$cell_type),"T cells",
-                                  ifelse(grepl ("B cell",local@meta.data$cell_type),"B cells",
-                                         ifelse(grepl( "killer",local@meta.data$cell_type),"NK",
-                                                ifelse(grepl("monocyte",local@meta.data$cell_type),"Monocytes",
-                                                       ifelse(grepl("dendritic",local@meta.data$cell_type),"DCs","Others")))))
-meta.data <- as.data.frame(local@meta.data)
-
-data_4 <- meta.data %>%
-  group_by(lineage, B27) %>%
-  summarise(cell_count = n()) 
-
-data_4$Proportion <- ifelse(data_4$B27 == "B27+", 
-                            (data_4$cell_count / b27_positive_total) * 100,
-                            ifelse(data_4$B27 == "B27-",
-                                   (data_4$cell_count / b27_negative_total) * 100,
-                                   NA))
-
-bar_plot_4 <- ggplot(data_4,
-                     aes(x = B27,
-                         y = Proportion,
-                         fill = lineage)) +
-              geom_col(colour='black', position = "stack", width = 0.3) +
-              labs(x = "", y = "Proportion of Cells in %", 
-                   title = "Proportions of Cells in Meta-cluster")+
-              scale_fill_manual(values = pnw_palette("Bay",6), name = "")
+#Split count table so that each table have counts for 50 donors, out of 981 donors
+split_master_data <- function(count_table, donors_per_table = 50) {
+  unique_donors <- unique(count_table$donor_id)
+  num_tables <- length(unique_donors) %/% donors_per_table
   
-bar_plot_4 + my_theme
+# Initialize a list to store the split tables
+  split_tables <- list()
   
+  for (i in 1:num_tables) {
+    donors_to_extract <- unique_donors[((i - 1) * donors_per_table + 1):(i * donors_per_table)]
+    subset_table <- subset(count_table, donor_id %in% donors_to_extract)
+    split_tables[[i]] <- subset_table
+  }
+  
+  return(split_tables)
+}
+
+# Split the master data into smaller tables, each containing 50 donors
+smaller_tables <- split_master_data(count_table, donors_per_table = 50)
+
+# Access individual smaller tables
+# For example, to access the first smaller table:
+table1 <- smaller_tables[[1]]
+
+#Generate plots
+bar_plot_theme <- theme(legend.position = "none",
+                        panel.border = element_blank(), 
+                        panel.grid.major = element_blank(),
+                        panel.grid.minor = element_blank(), 
+                        axis.line = element_line(colour = "black"),
+                        axis.title.x = element_text(color = "black", size = 12),
+                        axis.title.y = element_text(size = 12),
+                        axis.text.x = element_text(size = 12))
+
+generate_plot <- function(table) {
+  ggplot(table, aes (x = donor_id, y = Count, fill = donor_id))+
+    geom_boxplot(fill = "white", colour = "black")+
+    scale_x_discrete(guide = guide_axis(angle = 90))+
+    ylab("Feature Count")+
+    theme_minimal()+
+    bar_plot_theme
+}
+
+# Generate plots for all data frames
+plots_list <- lapply(smaller_tables, generate_plot)
+
+# Save each graph in the list
+out_dir = file.path("/home/rstudio/", "QC_results")
+dir.create(out_dir, showWarnings = F, recursive = T)
+
+for (p in seq_along(plots_list)) {
+  filename <- file.path(out_dir, paste0("graph_", p, ".png"))
+  ggsave(filename, plot = plots_list[[p]], width = 15, height = 7)
+}
