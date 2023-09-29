@@ -4,22 +4,34 @@ library(tidyverse)
 library (ggplot2)
 library(dplyr)
 
-MHC_genes <- c("HLA-DQB1","HLA-DRB1","HLA-B","HLA-C","HLA-A","HLA-DQA1","HLA-DQA2")
-
-genes_of_interest <- c("HLA-DQB1","HLA-DRB1","HLA-B","HLA-C","HLA-A","HLA-DQA1","HLA-DQA2","KLRB1","MT-ND3","FOS",
-                       "JUN","CD161","IL7R","CCL5","CXCR4", "XCR1", "IL17A")
-
-plot1<- DotPlot(local, features = genes_of_interest,split.by = "B27", cols = "Spectral") +
-  theme(axis.text.x = element_text(angle=90, vjust=0.5, hjust=1, size = 15),
-        axis.title.x = element_blank())
-
-AS_risk_genes_1 <- c("ERAP1","ERAP2","IL-23R","RUNX3",'TYK2',"PTGER4","IL12B",
+AS_risk_genes_1 <- c("ERAP1","ERAP2","RUNX3",'TYK2',"PTGER4","IL12B",
                      "BACH2","CARD9","IL6R","TNFRSF1A","FCGR2A","UBE2E3","ZMIZ1",
                      "NKX2-3","SH2B3","GPR65","NOS2","ICOSLG","TNP2","DNMT3B","IL2RA","IL27","GPR35","INAVA")
 
-plot1<- DotPlot(local, features = AS_risk_genes_1,split.by = "B27", cols = "Spectral") + coord_flip + 
+#"IL-23R"
+Idents (local) <- "B27"
+B27_neg_seurat <- subset(local, idents = "B27-")
+B27_pos_seurat <- subset(local,idents = "B27+")
+
+Idents(B27_neg_seurat) = "predicted.celltype.l2"
+plot_neg<- DotPlot(B27_neg_seurat, features = AS_risk_genes_1, cols = "Spectral", cluster.idents = TRUE) + 
   theme(axis.text.x = element_text(angle=90, vjust=0.5, hjust=1, size = 15),
-        axis.title.x = element_blank())
+        axis.title.x = element_blank()) 
+print(plot_neg)
+
+Idents(B27_pos_seurat) = "predicted.celltype.l2"
+plot_pos<- DotPlot(B27_pos_seurat, features = AS_risk_genes_1, cols = "Spectral", cluster.idents = TRUE) + 
+  theme(axis.text.x = element_text(angle=90, vjust=0.5, hjust=1, size = 15),
+        axis.title.x = element_blank()) 
+print(plot_pos)
+
+
+Idents (local) <- "predicted.celltype.l2"
+plot<- DotPlot(local, features = AS_risk_genes_1, cols = "Spectral", cluster.idents = TRUE, split.by = "predicted.celltype.l2") + 
+  theme(axis.text.x = element_text(angle=90, vjust=0.5, hjust=1, size = 15),
+        axis.title.x = element_blank()) 
+
+print(plot)
 
 
 
