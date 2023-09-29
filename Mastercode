@@ -18,7 +18,7 @@ local <- readRDS("~/local.rds") #scRNA dataset
 local <- subset(local,subset = nFeature_RNA > 200 & nFeature_RNA < 2500 & percent.mt < 5)
 print(local)
 
-#local_1 <- subset(local,subset = nFeature_RNA > 200 & nFeature_RNA < 1500 &percent.mt < 5 )
+#local_1 <- subset(local,subset = nFeature_RNA > 200 & nFeature_RNA < 2500 &percent.mt < 5 )
 #Change ENSEMBLE ID to gene name
 Feature <- read.delim("~/feature.tsv", header = T)
 colnames(Feature)[colnames(Feature) == "rowname"] <- "ENSEMBLE"
