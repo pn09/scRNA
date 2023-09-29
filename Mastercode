@@ -3,6 +3,26 @@ library(Seurat)
 library(tidyverse)
 library (ggplot2)
 library(dplyr)
+
+MHC_genes <- c("HLA-DQB1","HLA-DRB1","HLA-B","HLA-C","HLA-A","HLA-DQA1","HLA-DQA2")
+
+genes_of_interest <- c("HLA-DQB1","HLA-DRB1","HLA-B","HLA-C","HLA-A","HLA-DQA1","HLA-DQA2","KLRB1","MT-ND3","FOS",
+                       "JUN","CD161","IL7R","CCL5","CXCR4", "XCR1", "IL17A")
+
+plot1<- DotPlot(local, features = genes_of_interest,split.by = "B27", cols = "Spectral") +
+  theme(axis.text.x = element_text(angle=90, vjust=0.5, hjust=1, size = 15),
+        axis.title.x = element_blank())
+
+AS_risk_genes_1 <- c("ERAP1","ERAP2","IL-23R","RUNX3",'TYK2',"PTGER4","IL12B",
+                     "BACH2","CARD9","IL6R","TNFRSF1A","FCGR2A","UBE2E3","ZMIZ1",
+                     "NKX2-3","SH2B3","GPR65","NOS2","ICOSLG","TNP2","DNMT3B","IL2RA","IL27","GPR35","INAVA")
+
+plot1<- DotPlot(local, features = AS_risk_genes_1,split.by = "B27", cols = "Spectral") + coord_flip + 
+  theme(axis.text.x = element_text(angle=90, vjust=0.5, hjust=1, size = 15),
+        axis.title.x = element_blank())
+
+
+
 ####Current version####
 #Define argument values
 options(echo=TRUE)
